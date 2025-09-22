@@ -102,9 +102,6 @@ Sections:
     - name : Inbox Support
       file : BrighterInboxSupport.md
       order : 20
-    - name : MongoDB Inbox
-      file : MongoInbox.md
-      order : 110
 
   Darker Query Handlers and Middleware Pipelines:
     order: 60

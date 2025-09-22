@@ -57,7 +57,6 @@
  * [Postgres Inbox](/contents/9/PostgresInbox.md)
  * [Sqlite Inbox](/contents/9/SqliteInbox.md)
  * [Dynamo Inbox](/contents/9/DynamoInbox.md)
- * [MongoDB Inbox](/contents/9/MongoInbox.md)
 
 ### Darker Query Handlers and Middleware Pipelines
 
@@ -164,12 +163,13 @@
  * [Sqlite Outbox](/contents/10/SqliteOutbox.md)
  * [Dapper Outbox](/contents/10/DapperOutbox.md)
  * [Dynamo Outbox](/contents/10/DynamoOutbox.md)
+ * [MongoDb Outbox](/contents/10/MongoDBOutbox.md)
  * [MSSQL Inbox](/contents/10/MSSQLInbox.md)
- * [MongoDB Inbox](/contents/10/MongoInbox.md)
  * [MySQL Inbox](/contents/10/MySQLInbox.md)
  * [Postgres Inbox](/contents/10/PostgresInbox.md)
  * [Sqlite Inbox](/contents/10/SqliteInbox.md)
  * [Dynamo Inbox](/contents/10/DynamoInbox.md)
+ * [MongoDb Inbox](/contents/10/MongoDbInbox.md)
 
 ### Darker Query Handlers and Middleware Pipelines
 

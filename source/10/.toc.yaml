@@ -56,21 +56,27 @@ Sections:
     - name : Dynamo Outbox 
       file : DynamoOutbox.md
       order : 90
+    - name : MongoDb Outbox 
+      file : MongoDBOutbox.md
+      order : 100
     - name : MSSQL Inbox
       file : MSSQLInbox.md
-      order : 100
+      order : 110
     - name : MySQL Inbox
       file : MySQLInbox.md
-      order : 110
+      order : 120
     - name : Postgres Inbox
       file : PostgresInbox.md
-      order : 120
+      order : 130
     - name : Sqlite Inbox
       file : SqliteInbox.md
-      order : 130
+      order : 140
     - name : Dynamo Inbox
       file : DynamoInbox.md
-      order : 140
+      order : 150
+    - name : MongoDb Inbox
+      file : MongoDbInbox.md
+      order : 160
 
   END OF VERSION:
     order: 999
