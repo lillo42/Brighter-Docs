@@ -17,18 +17,13 @@ private static IHostBuilder CreateHostBuilder(string[] args) =>
 
 private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCollection services)
 {
-    services.AddServiceActivator(options =>
-        { ...  })
-        .UseExternalInbox(
-            new MySqlInbox(new MySqlInboxConfiguration("server=localhost; port=3306; uid=root; pwd=root; database=Salutations", "Inbox");
-            new InboxConfiguration(
-                scope: InboxScope.Commands,
-                onceOnly: true,
-                actionOnExists: OnceOnlyAction.Throw
-            )
-        );
+    services.AddConsumers(options =>
+        {
+            var configuration = new RelationalDatabaseConfiguration(connectionString,  "brighter_test", inboxTableName: "inbox_messages");            
+            opt.InboxConfiguration = new InboxConfiguration(new MySqlInbox(configuration));
+            ...
+        });
 }
-
 ...
 
 ```

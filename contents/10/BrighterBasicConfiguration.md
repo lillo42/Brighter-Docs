@@ -183,7 +183,7 @@ The major difference here is whether or not you wish to use an *Outbox* for Tran
 
 To use an *External Bus*, you need to supply Brighter with configuration information that tells Brighter what middleware you are using and how to find it. (You don't need to do anything to configure an *Internal Bus*, it is always available.)
 
-The **IBrighterBuilder** interface returned from **AddBrighter** allows you to configure the properties of your external bus, by calling the **UseExternalBus** extension method. The UseExternalBus extension method takes a lambda function, whose only parameter is an **ExternalBusConfiguration**. The **ExternalBusConfiguration** lets you set properties such as 
+The **IBrighterBuilder** interface returned from **AddBrighter** allows you to configure the properties of your external bus, by calling the **AddProducers** extension method. The AddProducers extension method takes a lambda function, whose only parameter is an **ExternalBusConfiguration**. The **ExternalBusConfiguration** lets you set properties such as 
 
 ``` csharp
 private void ConfigureBrighter(IServiceCollection services)
@@ -192,7 +192,7 @@ private void ConfigureBrighter(IServiceCollection services)
         {
             ...
         })
-        .UseExternalBus((configure) =>
+        .AddProducers((configure) =>
         {
         })
         .AutoFromAssemblies();
@@ -262,7 +262,7 @@ Putting this together, an example configuration for an External Bus for a local 
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddBrighter(...)
-        .UseExternalBus((configure) =>
+        .AddProducers((configure) =>
         {
             configure.ProducerRegistry = new RmqProducerRegistryFactory(
                 new RmqMessagingGatewayConnection
@@ -328,7 +328,7 @@ public void ConfigureServices(IServiceCollection services)
     services.AddSingleton<IAmARelationalDatabaseConfiguration>(outboxConfiguration);
 
     services.AddBrighter(...)
-        .UseExternalBus((configure) =>
+        .AddProducers((configure) =>
         {
             configure.Outbox = new MySqlOutbox(outboxConfiguration);
             configure.TransactionProvider = typeof(MySqlEntityFrameworkConnectionProvider<GreetingsEntityGateway>);
@@ -360,7 +360,7 @@ This results in:
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddBrighter(...)
-        .UseExternalBus(...)
+        .AddProducers(...)
          .UseOutboxSweeper()
          .AutoFromAssemblies();
         ...
@@ -370,7 +370,7 @@ public void ConfigureServices(IServiceCollection services)
 
 #### Request-Reply
 
-(**UseExternalBus()** has optional parameters for use with Request-Reply support for some transports. We don't cover that here, instead see [Direct Messaging](/contents/Routing.md#direct-messaging) for more).
+(**AddProducers()** has optional parameters for use with Request-Reply support for some transports. We don't cover that here, instead see [Direct Messaging](/contents/Routing.md#direct-messaging) for more).
 
 #### **Configuring JSON Serialization**
 
@@ -447,7 +447,7 @@ public void ConfigureServices(IServiceCollection services)
         {
             options.PropertyNameCaseInsensitive = true;
         })
-       .UseExternalBus((configure) =>
+       .AddProducers((configure) =>
         {
             configure.ProducerRegistry = new RmqProducerRegistryFactory(
                 new RmqMessagingGatewayConnection
@@ -494,9 +494,9 @@ To use Brighter's *Service Activator* with **HostBuilder** you will need to take
 * **Paramore.Brighter.ServiceActivator.Extensions.Hosting**
 * **Paramore.Brighter.ServiceActivator.Extensions.DependencyInjection**
 
-These provide an extension method **AddServiceActivator()** that can be used to add Brighter to the .NET Core DI Framework.
+These provide an extension method **AddConsumers()** that can be used to add Brighter to the .NET Core DI Framework.
 
-By adding the package you can call the **AddServiceActivator()** extension method.
+By adding the package you can call the **AddConsumers()** extension method.
 
 If you are using a **HostBuilder** class's **ConfigureServices** method  call the following:
 
@@ -505,16 +505,16 @@ private static IHostBuilder CreateHostBuilder(string[] args) =>
     Host.CreateDefaultBuilder(args)
         .ConfigureServices(hostContext, services) =>
         {
-            services.AddServiceActivator(...)
+            services.AddConsumers(...)
         }
 
 ```
 
 if you are using .NET 6 you can make the call direction on your **HostBuilder**'s Services property.
 
-The **AddServiceActivator()** method takes an **`Action<ServiceActivatorOptions>`** delegate. The extension method supplies the delegate with a **ServiceActivatorOptions** object that allows you to configure how Brighter runs.
+The **AddConsumers()** method takes an **`Action<ServiceActivatorOptions>`** delegate. The extension method supplies the delegate with a **ServiceActivatorOptions** object that allows you to configure how Brighter runs.
 
-The **AddServiceActivator()** method returns an **IBrighterBuilder** interface. **IBrighterBuilder** is a [fluent interface](https://en.wikipedia.org/wiki/Fluent_interface) that you can use to configure Brighter *Command Processor* properties. It is discussed above at [Brighter Builder Fluent Interface](#brighter-builder-fluent-interface)) and the same options apply. We discuss one additional option that becomes important when receiving requests the *Inbox* in [Additional Brighter Builder Options](/contents/BasicConfiguration.md#the-inbox).
+The **AddConsumers()** method returns an **IBrighterBuilder** interface. **IBrighterBuilder** is a [fluent interface](https://en.wikipedia.org/wiki/Fluent_interface) that you can use to configure Brighter *Command Processor* properties. It is discussed above at [Brighter Builder Fluent Interface](#brighter-builder-fluent-interface)) and the same options apply. We discuss one additional option that becomes important when receiving requests the *Inbox* in [Additional Brighter Builder Options](/contents/BasicConfiguration.md#the-inbox).
 
 #### **Subscriptions**
 
@@ -566,7 +566,7 @@ private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCo
             makeChannels: OnMissingChannel.Create), //change to OnMissingChannel.Validate if you have infrastructure declared elsewhere
     };
 
-    services.AddServiceActivator(options =>
+    services.AddConsumers(options =>
         {
             options.Subscriptions = subscriptions;
         })
@@ -603,9 +603,9 @@ private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCo
 
     var rmqMessageConsumerFactory = new RmqMessageConsumerFactory(rmqConnection);
 
-    services.AddServiceActivator(options =>
+    services.AddConsumers(options =>
         {
-             options.ChannelFactory = new ChannelFactory(rmqMessageConsumerFactory);
+             options.DefaultChannelFactory = new ChannelFactory(rmqMessageConsumerFactory);
         })
 }
 
@@ -630,13 +630,13 @@ private static IHostBuilder CreateHostBuilder(string[] args) =>
 
 private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCollection services)
 {
-    services.AddServiceActivator(options =>
+    services.AddConsumers(options =>
         {
             options.UseScoped = true;
             options.HandlerLifetime = ServiceLifetime.Scoped;
             options.MapperLifetime = ServiceLifetime.Singleton;
             options.CommandProcessorLifetime = ServiceLifetime.Scoped;
-    })
+        })
 }
 
 ...
@@ -646,7 +646,7 @@ private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCo
 
 ### **Service Activator Brighter Builder Fluent Interface**
 
-The call to **AddServiceActivator()** returns an **IBrighterBuilder** fluent interface. This means that you can use any of the options described in [Brighter Build Fluent Interfaces](#brighter-builder-fluent-interface) to configure the associated *Command Processor* such as scanning assemblies for *Request Handlers* and adding an *External Bus* and *Outbox*.
+The call to **AddConsumers()** returns an **IBrighterBuilder** fluent interface. This means that you can use any of the options described in [Brighter Build Fluent Interfaces](#brighter-builder-fluent-interface) to configure the associated *Command Processor* such as scanning assemblies for *Request Handlers* and adding an *External Bus* and *Outbox*.
 
 An option is intended for the context of a Service Activator is described below.
 
@@ -687,20 +687,18 @@ private static IHostBuilder CreateHostBuilder(string[] args) =>
 
 private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCollection services)
 {
-    services.AddServiceActivator(options =>
+    services.AddConsumers(options =>
         {   
-            ...
             options.InboxConfiguration =  new InboxConfiguration(
                     inbox: new MySqlInbox(new RelationalDatabaseConfiguration(DbConnectionString()))
                     scope: InboxScope.Commands,
                     onceOnly: true,
                     actionOnExists: OnceOnlyAction.Throw
-        )})
-;
-}
-
-...
-
+            ...
+        });
+ }
+ 
+ ...
 ```
 Typically **DbConnectionString** would obtain the connection string for the Db from configuration.
 
@@ -726,11 +724,8 @@ private static IHostBuilder CreateHostBuilder(string[] args) =>
 private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCollection services)
 {
     ...
-
     services.AddHostedService<ServiceActivatorHostedService>();
 }
-
-...
 
 ```
 
@@ -795,10 +790,10 @@ private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCo
 
     var rmqMessageConsumerFactory = new RmqMessageConsumerFactory(rmqConnection);
 
-    services.AddServiceActivator(options =>
+    services.AddConsumers(options =>
     {
         options.Subscriptions = subscriptions;
-        options.ChannelFactory = new ChannelFactory(rmqMessageConsumerFactory);
+        options.DefaultChannelFactory = new ChannelFactory(rmqMessageConsumerFactory);
         options.UseScoped = true;
         options.HandlerLifetime = ServiceLifetime.Scoped;
         options.MapperLifetime = ServiceLifetime.Singleton;
@@ -811,7 +806,7 @@ private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCo
             actionOnExists: OnceOnlyAction.Throw
         );
     })
-    .UseExternalBus((configure) =>
+    .AddProducers((configure) =>
     {
         configure.ProducerRegistry = producerRegistry;
         configure.Outbox = outbox;

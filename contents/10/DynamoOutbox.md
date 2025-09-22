@@ -22,7 +22,7 @@ As we want to use DynamoDb with the outbox, we also call: Use{DB}TransactionConn
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddBrighter(...)
-        .UseExternalBus(...)
+        .AddProducers(...)
         .UseDynamoDbOutbox(ServiceLifetime.Singleton)
         .UseDynamoDbTransactionConnectionProvider(typeof(DynamoDbUnitOfWork), ServiceLifetime.Scoped)
         .UseOutboxSweeper()

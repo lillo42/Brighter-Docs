@@ -50,7 +50,7 @@ It provides a stronger guarantee than the **CommandProcessor.Post** outside Db t
 
 ## Bulk Deposit
 
-Starting in v9.2.1 Brighter allows a batch of Messages to be written to the **Outbox**. If your outbox suoports Bulk (This will become a requirement in v10) **CommandProcessor.DepositPost** can be used to deposit a large number of messages in much quicker than individually.
+Starting in v9.2.1 Brighter allows a batch of Messages to be written to the **Outbox**. If your outbox supports Bulk (This will become a requirement in v10) **CommandProcessor.DepositPost** can be used to deposit a large number of messages in much quicker than individually.
 
 When creating your **CommandProcessor** you can set an outbox bulk chunk size, if the amount of mesages to be deposited into the **Outbox** is greater than this number it will be broken up into chunks of no more than this size.
 
@@ -58,46 +58,105 @@ When creating your **CommandProcessor** you can set an outbox bulk chunk size, i
 
 Brighter has the functionality to allow the  **Outbox** to participate in the database transactions of your application so that you can ensure that distributed requests will be persisted (or fail to persist) inline with application changes.
 
-To have the Brighter **Outbox** participate in Database transactions the command process must be built specifying a **IAmABoxTransactionConnectionProvider**, this connection provider will be used when **CommandProcessor.DepositPost** is called and if there is an active transactions the **Outbox** will participate in the active transaction provider by the specified **IAmABoxTransactionConnectionProvider**.  
+To have the Brighter **Outbox** participate in Database transactions your command handler must take a dependency on an  **IAmATransactionConnectionProvider**. The provider will be used when **CommandProcessor.DepositPost** is called and if there is an active transaction the **Outbox** will participate in that transaction. You use the **IAmATransactionConnectionProvider** to create the transaction that you use to interact with the Db; you also use it to grab any connection to the Db that you need.  
 
-It is important to note that **CommandProcessor.Clear** and **CommandPorcessor.Post** will never participate in transactions as the purpose transaction participation is to ensure that **Outbox** messages are committed (or fail to commit) in the same transaction as application entity changes.
+Below is an fragment using Dapper
 
-Below is an example using a UnitOfWork that wraps the database connection for your application
 ``` csharp
-//Begin Database transaction
-unitOfWork.BeginTransaction();
-
-try
+public AddGreetingHandlerAsync(IAmATransactionConnectionProvider transactionProvider, IAmACommandProcessor postBox, ILogger<AddGreetingHandlerAsync> logger)
 {
-    //Update applicationEntities
-    var updatedContact = contactsService.UpdateContact(contact);
-
-    //Deposit the message in the outbox
-    commandProcess.DepositPost(updatedContact.ToBrighterMessage());
-
-    //Commit Transaction
-    unitOfWork.CommitTransaction();
+    _transactionProvider = transactionProvider; 
+    _postBox = postBox;
+    _logger = logger;
 }
-catch(Exception e)
+
+//...
+
+public override async Task<AddGreeting> HandleAsync(AddGreeting addGreeting, CancellationToken cancellationToken = default)
 {
-    // If there was an error during processing, rollback all changes
-    unitOfWork.RollbackTransaction();
+    var posts = new List<Guid>();
+    
+    // The transaction provider (unit of work) gives us a connection and transaction
+    // that the Outbox can share 'behind the scenes'.
+    var conn = await _transactionProvider.GetConnectionAsync(cancellationToken);
+    var tx = await _transactionProvider.GetTransactionAsync(cancellationToken);
+    try
+    {
+        var people = await conn.QueryAsync<Person>(
+            "select * from Person where name = @name",
+            new {name = addGreeting.Name},
+            tx
+        );
+        var person = people.SingleOrDefault();
+
+        if (person != null)
+        {
+            var greeting = new Greeting(addGreeting.Greeting, person);
+
+            //write the added child entity to the Db
+            await conn.ExecuteAsync(
+                "insert into Greeting (Message, Recipient_Id) values (@Message, @RecipientId)",
+                new { greeting.Message, RecipientId = greeting.RecipientId },
+                tx);
+
+            // Now write the message to the Outbox in the same transaction.
+            posts.Add(await _postBox.DepositPostAsync(
+                new GreetingMade(greeting.Greet()),
+                _transactionProvider,
+                cancellationToken: cancellationToken));
+
+            //commit both new greeting and outgoing message
+            await _transactionProvider.CommitAsync(cancellationToken);
+        }
+    }
+    catch (Exception e)
+    {
+        _logger.LogError(e, "Exception thrown handling Add Greeting request");
+        // Rollback the entity change and the outgoing message.
+        await _transactionProvider.RollbackAsync(cancellationToken);
+        return await base.HandleAsync(addGreeting, cancellationToken);
+    }
+    finally
+    {
+        _transactionProvider.Close();
+    }
+
+    // Dispatch the message(s) via a transport.
+    // Alternatively, let the Sweeper handle this, at the cost of increased latency.
+    await _postBox.ClearOutboxAsync(posts, cancellationToken:cancellationToken);
+
+    return await base.HandleAsync(addGreeting, cancellationToken);
 }
+
 ```
+
+## Post is Without Transactions
+
+**CommandProcessor.Post** allows you to easily send a message when you are not participating in a transaction with your Db. It is important to note that **CommandProcessor.Post** will never participate in a transaction with your persistent Outbox.
+
+**CommandProcessor.Post** first writes a message to the persistent Outbox and then immediately attempts to dispatch it to the message broker. If your application crashes between the successful Outbox write and the dispatch, the message will remain in the Outbox for a sweeper or manual process to send later.
+
+However, because the Outbox write is not part of your application's database transaction, there is no guarantee that both operations (e.g., updating your entity and writing to the Outbox) will succeed or fail together.
+
+This method is intended for scenarios where you do not need transactional guarantees between your database writes and message dispatching.
 
 ## Implicit or Explicit Clearing of Messages from the Outbox
 
 There are two approaches to dispatching messages from Brighter's **Outbox**
   * Implicitly: This relies on a **Sweeper** to dispatch messages out of process
   * Explicitly: This ensures that your message is sent sooner but will processing time to your application code.
+
+### Explicit Clear  
   
-To explicitly clear a message you can call **CommandProcessor.ClearOutbox** directly in your handler, after the Db transaction completes. This has the lowest latency. You are responsible for tracking the ids of messages that you wish to send in **CommandProcessor.ClearOutbox**, we do not maintain this state for you. Note that you cannnot guarantee that this will succeed, although you can Retry. We use **CommandProcessor.RETRYPOLICY** on the write to the Broker, and you should retry errors writing to the Broker in that policy. However, as the message is now in the **Outbox** you can compensate for eventual failure to write to the Broker by replaying the message from the **MessageStore** at a later time.
+To explicitly clear a message you can call **CommandProcessor.ClearOutbox** directly in your handler, after the Db transaction completes. This has the lowest latency. You are responsible for tracking the ids of messages that you wish to send in **CommandProcessor.ClearOutbox**, we do not maintain this state for you. 
+
+Note that you cannnot guarantee that this will succeed, although you can Retry. We use **CommandProcessor.RETRYPOLICY** on the write to the Broker, and you should retry errors writing to the Broker in that policy. However, as the message is now in the **Outbox** you can compensate for eventual failure to write to the Broker by replaying the message from the **Outbox** at a later time.
+
+### Implicit Clear
 
 To implicitly clear messages from your outbox, configure a **Outbox Sweeper** to listen to your **Outbox** and dispatch messages for you.  Once an **Outbox Sweeper** is running you no longer need to call **CommandProcessor.ClearOutbox** however you still have the choice to if you feel a specific message is time sensitive.
 
-## Outbox Sweeper
-
-The **Outbox Sweeper** is an out of process service that monitors an **Outbox** and dispatches messages that have yet to be dispatches. Using **Outbox Sweeper** has a lower latency impact for your application, but because it keeps trying to send the messages until it succeeds is the recommended approach to *Guranteed, At Least Once, Delivery*.
+The **Outbox Sweeper** is process that monitors an **Outbox** and dispatches messages that have yet to be dispatches. Using **Outbox Sweeper** has a lower latency impact for your application, but because it keeps trying to send the messages until it succeeds is the recommended approach to *Guranteed, At Least Once, Delivery*.
 
 The benefits of using an **Outbox Sweeper** are:
   * If there is a failure dispatch a message after it is committed to the **Outbox** it will be retried until it is dispatches
@@ -111,9 +170,15 @@ The **Timed Outbox Sweeper** has the following configurables
 
 It is important to note that the lower the Minimum Message age is the more likely it is that your message will be dispatches more than once (as if you are explicitly clearing messages your application may have instructed the clearing of a message at the same time as the **Outbox Sweeper**)
 
+### Singleton Sweeper
+
+You should only have one **Sweeper** instance running for a given Outbox at any time. While running the sweeper on a background thread within your producer application might be acceptable during development, this approach becomes problematic in production. As you scale out your application for resilience and performance, you will end up with multiple conflicting sweeper instances.
+
+The recommended production strategy is to run the **Sweeper** in its own dedicated service. Ensure that only one instance of this service is running at a time, for example by using a distributed lock or by deploying it as a singleton service in your container orchestrator. See [Kubernetes Singleton Pattern](https://www.weave.works/blog/kubernetes-patterns-singleton-application-pattern) for an example of this approach.
+
 ## Outbox Archiver
 
-The **Outbox Archiver** is an out of process services that monitors an **Outbox** and will archive messages of older than a certain age.
+The **Outbox Archiver** is an out-of-process service that monitors an **Outbox** and archives messages older than a certain age.
 
 The **Timed Outbox Archiver** has the following configurables
   * TimerInterval: The number of seconds to wait between checked for messages eligable for archival (default: 15)
@@ -138,11 +203,11 @@ public static IHost CreateOutbox(this IHost webHost)
 {
 	using (var scope = webHost.Services.CreateScope())
 	{
-	var services = scope.ServiceProvider;
-	var env = services.GetService<IWebHostEnvironment>();
-	var config = services.GetService<IConfiguration>();
+	    var services = scope.ServiceProvider;
+	    var env = services.GetService<IWebHostEnvironment>();
+	    var config = services.GetService<IConfiguration>();
 
-	CreateOutbox(config, env);
+	    CreateOutbox(config, env);
 	}
 
 	return webHost;
@@ -155,27 +220,24 @@ private static void CreateOutbox(IConfiguration config, IWebHostEnvironment env)
 	   var connectionString = config.GetConnectionString("Greetings");
 
 	    using var sqlConnection = new MySqlConnection(connectionString);
-            sqlConnection.Open();
+        sqlConnection.Open();
 
-            using var existsQuery = sqlConnection.CreateCommand();
-            existsQuery.CommandText = MySqlOutboxBuilder.GetExistsQuery(OUTBOX_TABLE_NAME);
-            bool exists = existsQuery.ExecuteScalar() != null;
+        using var existsQuery = sqlConnection.CreateCommand();
+        existsQuery.CommandText = MySqlOutboxBuilder.GetExistsQuery(OUTBOX_TABLE_NAME);
+        bool exists = existsQuery.ExecuteScalar() != null;
 
-            if (exists) return;
+        if (exists) return;
 
-            using var command = sqlConnection.CreateCommand();
-            command.CommandText = MySqlOutboxBuilder.GetDDL(OUTBOX_TABLE_NAME);
-            command.ExecuteScalar();
+        using var command = sqlConnection.CreateCommand();
+        command.CommandText = MySqlOutboxBuilder.GetDDL(OUTBOX_TABLE_NAME);
+        command.ExecuteScalar();
 
 	}
 	catch (System.Exception e)
 	{
-	Console.WriteLine($"Issue with creating Outbox table, {e.Message}");
-	//Rethrow, if we can't create the Outbox, shut down
-	throw;
+	    Console.WriteLine($"Issue with creating Outbox table, {e.Message}");
+	    //Rethrow, if we can't create the Outbox, shut down
+	    throw;
 	}
 }
-
 ```
-
-

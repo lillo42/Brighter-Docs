@@ -29,11 +29,14 @@ As we want to use EF Core, we also call: Use{DB}TransactionConnectionProvider so
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddBrighter(...)
-        .UseExternalBus(...)
-        .UseMySqlOutbox(new MySqlConfiguration(DbConnectionString(), _outBoxTableName), typeof(MySqlConnectionProvider), ServiceLifetime.Singleton)
-        .UseMySqTransactionConnectionProvider(typeof(MySqlEntityFrameworkConnectionProvider<GreetingsEntityGateway>), ServiceLifetime.Scoped)
+        .AddProducers(producers =>
+		{
+			producers.Outbox = new MySqlOutbox(outboxConfiguration);
+        	producers.ConnectionProvider = typeof(MySqlConnectionProvider);
+        	// Use the EF Core transaction provider with your DbContext
+        	producers.TransactionProvider = typeof(MySqlEntityFrameworkTransactionProvider<GreetingsEntityGateway>);
+		})
         .UseOutboxSweeper()
-
         ...
 }
 
@@ -52,28 +55,28 @@ We call **DepositPostAsync** within that transaction to write the message to the
 	var tx = await _uow.Database.BeginTransactionAsync(cancellationToken);
 	try
 	{
-	var person = await _uow.People
-		.Where(p => p.Name == addGreeting.Name)
-		.SingleAsync(cancellationToken);
+		var person = await _uow.People
+			.Where(p => p.Name == addGreeting.Name)
+			.SingleAsync(cancellationToken);
 	
-	var greeting = new Greeting(addGreeting.Greeting);
+		var greeting = new Greeting(addGreeting.Greeting);
 	
-	person.AddGreeting(greeting);
+		person.AddGreeting(greeting);
 	
-	//Now write the message we want to send to the Db in the same transaction.
-	posts.Add(await _postBox.DepositPostAsync(new GreetingMade(greeting.Greet()), cancellationToken: cancellationToken));
+		//Now write the message we want to send to the Db in the same transaction.
+		posts.Add(await _postBox.DepositPostAsync(new GreetingMade(greeting.Greet()), cancellationToken: cancellationToken));
 	
-	//write the changed entity to the Db
-	await _uow.SaveChangesAsync(cancellationToken);
+		//write the changed entity to the Db
+		await _uow.SaveChangesAsync(cancellationToken);
 
-	//write new person and the associated message to the Db
-	await tx.CommitAsync(cancellationToken);
+		//write new person and the associated message to the Db
+		await tx.CommitAsync(cancellationToken);
 	}
 	catch (Exception)
 	{
-	//it went wrong, rollback the entity change and the downstream message
-	await tx.RollbackAsync(cancellationToken);
-	return await base.HandleAsync(addGreeting, cancellationToken);
+		//it went wrong, rollback the entity change and the downstream message
+		await tx.RollbackAsync(cancellationToken);
+		return await base.HandleAsync(addGreeting, cancellationToken);
 	}
 
 	//Send this message via a transport. We need the ids to send just the messages here, not all outstanding ones.
@@ -82,6 +85,5 @@ We call **DepositPostAsync** within that transaction to write the message to the
 
 	return await base.HandleAsync(addGreeting, cancellationToken);
 }
-
 ```
 

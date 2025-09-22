@@ -28,7 +28,7 @@ Basic Brighter configutarion publications is as follows
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddBrighter(...)
-        .UseExternalBus(
+        .AddProducers(
         new AzureServiceBusProducerRegistryFactory(
                 asbConnection,
                 new AzureServiceBusPublication[]
@@ -43,7 +43,7 @@ public void ConfigureServices(IServiceCollection services)
 }
 ```
 
-For more on a *Publication* see the material on an *External Bus* in [Basic Configuration](/contents/BrighterBasicConfiguration.md#using-an-external-bus).
+For more on a *Publication* see the material on an *Add Producers* in [Basic Configuration](/contents/BrighterBasicConfiguration.md#using-an-external-bus).
 
 ## Subscription
 
@@ -104,7 +104,7 @@ private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCo
 
     var asbConsumerFactory = new AzureServiceBusConsumerFactory(clientProvider);
 
-    builder.Services.AddServiceActivator(options =>
+    builder.Services.AddConsumers(options =>
     {
         options.Subscriptions = subscriptions;
         options.ChannelFactory = new AzureServiceBusChannelFactory(asbConsumerFactory);

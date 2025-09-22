@@ -123,11 +123,10 @@ You configure the lifetimes for the different types that Brighter can create at 
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddBrighter(options =>
-    {
         options.HandlerLifetime = ServiceLifetime.Scoped;
         options.CommandProcessorLifetime = ServiceLifetime.Scoped;
         options.MapperLifetime = ServiceLifetime.Singleton;
-    });
+    );
 }
 
 ```
