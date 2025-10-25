@@ -30,7 +30,11 @@ As we want to use Dapper, we also call: Use{DB}TransactionConnectionProvider so 
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddBrighter(...)
-        .UseExternalBus(...)
+        .AddProducers(opt => 
+		{
+			var configuration = new RelationalDatabaseConfiguration(connectionString,  "brighter_test"inboxTableName: "inbox_messages");            
+            opt.InboxConfiguration = new InboxConfiguration(new MySqlInbox(configuration));
+		})
         .UseMySqlOutbox(new MySqlConfiguration(DbConnectionString(), _outBoxTableName), typeof(MySqlConnectionProvider), ServiceLifetime.Singleton)
         .UseMySqTransactionConnectionProvider(typeof(Paramore.Brighter.MySql.Dapper.UnitOfWork), ServiceLifetime.Scoped)
         .UseOutboxSweeper()

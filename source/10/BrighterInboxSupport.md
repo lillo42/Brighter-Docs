@@ -34,11 +34,19 @@ You also need to configure what action the inbox takes when it has seen a reques
 - OnceOnly: Does the inbox reject duplicates, or does it simply record requests. WARNING: Defaults to false - so it won't reject duplicates unless you set this parameter to true, just log requests that pass through this handler.
 - OnceOnlyAction: What does the inbox do, when a duplicate is encountered. Defaults to Throw.
   - Warn: Just log that a duplicate was received
-  - Throw: Throws a OnceOnlyException 
+  - Throw: Throws a OnceOnlyException
 
-**If you wish to terminate processing on a duplicate, you should set OnceOnly to true, which is what you need to terminate processing; the OnceOnlyAction will default to Throw**
+The combination of these flags results in the following behaviors:
 
-In the context of the Service Activator (listening to messages over middleware) throwing a OnceOnlyException will result in the message being acked (because it has already been processed).
+| `onceOnly` | `onceOnlyAction` | Behavior                                                                                             |
+| :---       | :---             | :---                                                                                                 |
+| `false`    | `Warn` or `Throw`| Always processes the message. Records the message in the inbox. This is the default behavior.        |
+| `true`     | `Warn`           | If a duplicate is found, logs a warning and **stops** processing the message. Otherwise, processes it. |
+| `true`     | `Throw`          | If a duplicate is found, throws a `OnceOnlyException` and **stops** processing. Otherwise, processes it. |
+
+**If you wish to terminate processing on a duplicate, you must set `onceOnly` to `true`.**
+
+In the context of the Service Activator (listening to messages over middleware) throwing a `OnceOnlyException` will result in the message being acked (because it has already been processed).
 
 The inbox is global to your application and uses the request id; you will want to distinguish requests in the inbox if you need to store the same request id for different pipelines. For example, if you deliver an event to multiple handlers, each handler has a request with the same request id.
 
@@ -58,11 +66,11 @@ There are two versions of the attribute: sync and async. Ensure that you choose 
 
 ### Inbox Configuration
 
-Your inbox is configured as part of the Brighter extensions to ServiceCollection. See [Inbox Configuration](/contents/BrighterBasicConfiguration.md#inbox) for more.
+Your inbox is configured as part of the Brighter extensions to `IServiceCollection`. See [Inbox Configuration](/contents/BrighterBasicConfiguration.md#inbox) for more.
 
 ### Inbox Builder
 
-Brighter contains DDL to configure your Inbox. For each supported database we include an **InboxBuilder**. The Inbox Builder **GetDDL** which allows you to obtain the DDL statements required to create an Inbox. You can use this as part of your application start up to configure the Inbox if it does not already exist.
+Brighter contains DDL to configure your Inbox. For each supported database we include an **InboxBuilder**. The Inbox Builder has a `GetDDL` method which allows you to obtain the DDL statements required to create an Inbox table. You can use this as part of your application start up to configure the Inbox if it does not already exist.
 
 The following example shows creation of a MySql inbox.
 
@@ -107,6 +115,8 @@ Later versions of Brighter may include data retention policy options that let yo
 ## Non-Transactional Inbox
 
 As of V9 Brighter's inbox is not transactional, that is it does not participate in the transaction that may write to disk as a result of processing a message. This means that the inbox could fail if your changes to state as a result of processing a request are made, but the inbox is not updated.
+
+This is in contrast to the [Outbox pattern](/contents/OutboxPattern.md), where storing the message to be sent *is* part of the same transaction as your business logic changes, guaranteeing that the message will be sent if your work is committed.
 
 Later versions of Brighter may address including the inbox within a transaction, as outbox does today.
 

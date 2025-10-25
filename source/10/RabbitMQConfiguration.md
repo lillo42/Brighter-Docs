@@ -12,6 +12,25 @@ RabbitMQ offers an API that defines primitives used to configure the middleware 
 
 We connect to RabbitMQ via a multiplexed TCP/IP connection - RabbitMQ calls these channels. Brighter uses a push consumer, so it has an open channel and can be seen on the consumers list in the management console. Brighter maintains a pool of connections and when asked for a new connection will take one from it's pool in preference to creating a new one.
 
+## RabbitMQ.Client v7 Support
+
+The `RabbitMQ.Client` library introduced significant breaking changes in version 7, most notably making its API entirely asynchronous. To support this new version without imposing a breaking change on all existing Brighter users, a new, separate package has been created:
+
+*   [Paramore.Brighter.MessagingGateway.RMQ.Async](https://www.nuget.org/packages/Paramore.Brighter.MessagingGateway.RMQ.Async)
+
+This is important because it allows you to choose the implementation that best fits your project:
+
+*   For existing projects, you can continue to use the `Paramore.Brighter.MessagingGateway.RMQ.Sync` package with `RabbitMQ.Client` v6.x and its synchronous API.
+*   For new projects, or when you are ready to adopt the `async`-native client, you can use the new `Paramore.Brighter.MessagingGateway.RMQ.Async` package. This package is designed to work with the fully asynchronous API of `RabbitMQ.Client` v7+, which can offer better performance and aligns with modern .NET asynchronous programming patterns.
+
+## Breaking Changes: Package Rename and Proactor Subscription
+
+With the introduction of the `Paramore.Brighter.MessagingGateway.RMQ.Async` package, the original `Paramore.Brighter.MessagingGateway.RMQ` package has been renamed to `Paramore.Brighter.MessagingGateway.RMQ.Sync`. This change better reflects its synchronous nature.
+
+A significant breaking change is the removal of the proactor subscription model from the `Paramore.Brighter.MessagingGateway.RMQ.Sync` package. The proactor pattern is inherently asynchronous and is better suited for the new fully asynchronous `RabbitMQ.Client` v7.
+
+If your application relies on proactor subscriptions for efficient, non-blocking message consumption, you must migrate to the `Paramore.Brighter.MessagingGateway.RMQ.Async` package. This package provides a native, high-performance asynchronous consumer that integrates correctly with the `RabbitMQ.Client` v7+ API.
+
 ## Connection
 
 The Connection to RabbitMQ is provided by an **RmqMessagingGatewayConnection** which allows you to configure the following:
@@ -31,7 +50,7 @@ The following code creates a typical RabbitMQ connection (here shown as part of 
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddBrighter(...)
-       .UseExternalBus((configure) =>
+       .AddProducers((configure) =>
         {
             configure.ProducerRegistry = new RmqProducerRegistryFactory(
                 new RmqMessagingGatewayConnection
@@ -49,7 +68,7 @@ public void ConfigureServices(IServiceCollection services)
 
 ## Publication
 
-For more on a *Publication* see the material on an *External Bus* in [Basic Configuration](/contents/BrighterBasicConfiguration.md#using-an-external-bus).
+For more on a *Publication* see the material on an *Add Producers* in [Basic Configuration](/contents/BrighterBasicConfiguration.md#using-an-external-bus).
 
 We only support one custom property on RabbitMQ which configures shutdown delay to await pending confirmations. 
 
@@ -67,7 +86,7 @@ The following code creates a *Publication* for RabbitMQ when configuring an *Ext
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddBrighter(...)
-      .UseExternalBus((configure) =>
+      .AddProducers((configure) =>
         {
             configure.ProducerRegistry = new RmqProducerRegistryFactory(
  
@@ -94,7 +113,7 @@ Our combined code for the *Connection*  with a single *Publication* looks like t
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddBrighter(...)
-      .UseExternalBus((configure) =>
+      .AddProducers((configure) =>
         {
             configure.ProducerRegistry = new RmqProducerRegistryFactory(
                new RmqMessagingGatewayConnection
@@ -158,7 +177,7 @@ private static void ConfigureBrighter(HostBuilderContext hostContext, IServiceCo
 
     var rmqMessageConsumerFactory = new RmqMessageConsumerFactory(rmqConnection);
 
-    services.AddServiceActivator(options =>
+    services.AddConsumers(options =>
         {
             options.Subscriptions = subscriptions;
             options.ChannelFactory = new ChannelFactory(rmqMessageConsumerFactory);
